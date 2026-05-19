@@ -1,0 +1,14 @@
+# Local Supabase credentials (copy from Secrets.example.xcconfig)
+Secrets.xcconfig
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+
+# Python / tooling
+__pycache__/
+*.pyc
+.cursor/
+
+# Downloaded offline catalog (fetched from CDN at runtime)
+pickr_library_v1.db

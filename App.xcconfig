@@ -1,0 +1,8 @@
+// App.xcconfig — included by the Xcode project.
+// Put real values in Secrets.xcconfig (copy from Secrets.example.xcconfig). Do not add empty SUPABASE_* or TMDB_* lines here — they override secrets.
+
+#include? "Secrets.xcconfig"
+
+INFOPLIST_KEY_SUPABASE_URL = $(SUPABASE_URL)
+INFOPLIST_KEY_SUPABASE_ANON_KEY = $(SUPABASE_ANON_KEY)
+INFOPLIST_KEY_TMDB_API_KEY = $(TMDB_API_KEY)
