@@ -334,9 +334,9 @@ private struct AppIntroWatchNowMock: View {
         AppIntroMockCanvas {
             VStack(alignment: .leading, spacing: 5) {
                 introChipRow {
-                    introChip("All Streamers", selected: false)
-                    introChip("Netflix", selected: true, icon: "play.rectangle.fill", tint: .red)
-                    introChip("Max", selected: true, icon: "bolt.fill", tint: Color(red: 0, green: 0.17, blue: 0.9))
+                    introChip("All Streamers", selected: true)
+                    introChip("Netflix", selected: false, icon: "play.rectangle.fill", tint: .red)
+                    introChip("Max", selected: false, icon: "bolt.fill", tint: Color(red: 0, green: 0.17, blue: 0.9))
                 }
                 introChipRow {
                     introChip("Any Genre", selected: true)

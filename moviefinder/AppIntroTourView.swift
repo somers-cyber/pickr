@@ -154,7 +154,7 @@ private struct AppIntroPage: Identifiable {
             title: "Welcome to Pickr",
             accent: AppTheme.brand,
             presentation: .brandHero,
-            introLine: "Pickr learns what you like, then helps you choose — no more endless browsing.",
+            introLine: "Learn your taste. Three picks, fast.",
             showsTitleBelowPreview: false,
             lines: []
         ),
@@ -163,12 +163,12 @@ private struct AppIntroPage: Identifiable {
             visual: .curate,
             title: "Curate",
             accent: AppTheme.brand,
-            introLine: "Curate is where you teach Pickr your taste. What you swipe shapes Watch Now and Archives.",
+            introLine: "Curate is where you teach Pickr your taste.",
             lines: [
-                "Like — you enjoyed it, Pickr surfaces more like it.",
-                "Dislike — not for you, Pickr dials back similar titles.",
-                "Watchlist — save for later, then Like or Dislike after watching.",
-                "Did Not See — you haven't watched it; Pickr won't update your taste."
+                "Like — more like this.",
+                "Dislike — less like this.",
+                "Watchlist — save for later.",
+                "Did Not See — doesn't change your taste."
             ]
         ),
         AppIntroPage(
@@ -176,10 +176,11 @@ private struct AppIntroPage: Identifiable {
             visual: .watchNow,
             title: "Watch Now",
             accent: Color(red: 0.35, green: 0.55, blue: 0.95),
-            introLine: "Three picks fast — filter with streamers, genre, and runtime.",
+            introLine: "Three picks, fast — filter by streamer, genre, and runtime.",
             lines: [
-                "Review or add to Watchlist on each movie card; tap the movie poster for more details.",
-                "\"Something else\" shuffles based on your filters, but after a few, picks will repeat. Change filters or review more for fresh options."
+                "Review or add to Watchlist",
+                "Tap the movie poster for more details",
+                "\"Something else\" shuffles your picks — change filters for fresh options."
             ]
         ),
         AppIntroPage(
@@ -187,11 +188,11 @@ private struct AppIntroPage: Identifiable {
             visual: .watchlist,
             title: "Watchlist",
             accent: .blue,
-            introLine: "Your saved for later list — bookmark movies then review them when you're ready.",
+            introLine: "Movies you saved for later.",
             lines: [
-                "Add from Curate (swipe up) or tap the bookmark on any movie card.",
-                "After you watch, review it from Watchlist — Like or Dislike saves to Archives.",
-                "Tap the bookmark again to remove it from your list."
+                "Save from Curate or any movie card.",
+                "Like or Dislike after you watch — it goes to Archives.",
+                "Tap the bookmark again to remove."
             ]
         ),
         AppIntroPage(
@@ -199,10 +200,11 @@ private struct AppIntroPage: Identifiable {
             visual: .archives,
             title: "Archives",
             accent: Color(white: 0.72),
-            introLine: "Every Like and Dislike is saved here — your archive of movies you've reviewed.",
+            introLine: "Your liked and disliked movies.",
             lines: [
-                "Switch between Liked and Disliked at the top; tap a poster for the full movie page.",
-                "Search by title, or tap Filter to sort and narrow by genre or decade."
+                "Liked and Disliked tabs at the top.",
+                "Tap a poster for details.",
+                "Search by title or filter by genre and decade."
             ]
         ),
         AppIntroPage(
@@ -213,9 +215,9 @@ private struct AppIntroPage: Identifiable {
             listStyle: .numbered,
             lines: [
                 "Set your genres.",
-                "Each tab shows tips on first use — tap i (top right) for more.",
-                "Do at least 10 swipes on Curate; more is better.",
-                "Open Watch Now when you want tonight’s three picks."
+                "Tap i on any tab for tips.",
+                "Do 10+ swipes on Curate.",
+                "Open Watch Now for tonight's three picks."
             ]
         ),
     ]

@@ -244,7 +244,6 @@ final class DiscoverViewModel: ObservableObject {
     private func fetchFromLibrary() {
         guard !isFetching else { return }
         isFetching = true
-        defer { isFetching = false }
 
         let genrePrefs   = GenrePreferencesStore.shared.genrePreferences
         let likedIds     = GenreCatalog.tmdbIds(matching: genrePrefs, level: .like)
@@ -305,6 +304,7 @@ final class DiscoverViewModel: ObservableObject {
 
         cards.append(contentsOf: gathered)
         errorMessage = nil
+        isFetching = false
     }
 
     /// Removes titles that look like the same franchise/series as a title the user just disliked.

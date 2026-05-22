@@ -788,6 +788,14 @@ final class WatchNowViewModel: ObservableObject {
         providerIds = ids
     }
 
+    /// All Watch Now filters at defaults: All Streamers, Any Genre, Any Length.
+    func resetFiltersToDefaults() {
+        generateTask?.cancel()
+        selectedGenreId = nil
+        selectedTime = .any
+        providerIds = []
+    }
+
     /// Clears rotation memory when filters change so a new query isn’t starved by old exclusions.
     func resetShownMovieIdsForNewFilters() {
         shownMovieIds.removeAll()

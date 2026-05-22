@@ -23,6 +23,7 @@ struct SettingsView: View {
                 profileSection
                 recommendationSection
                 aboutSection
+                acknowledgementsSection
                 #if DEBUG
                 debugEngineSection
                 #endif
@@ -58,6 +59,7 @@ struct SettingsView: View {
                     MovieDetailEngineRecordStore.shared.clearAll()
                     EvaluationsStore.shared.clearAll()
                     GenrePreferencesStore.shared.resetToDefaults()
+                    StreamingPreferences.clearAllPersistedSelections()
                     prefs.clearAll()
                     UserDefaults.standard.set(false, forKey: "genre_onboarding_complete")
                     UserDefaults.standard.set(false, forKey: "onboarding_complete")
@@ -124,6 +126,9 @@ struct SettingsView: View {
         } header: {
             settingsSectionHeader("About")
         }
+    }
+
+    private var acknowledgementsSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Movie data provided by TMDB")

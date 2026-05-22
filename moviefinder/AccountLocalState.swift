@@ -109,6 +109,7 @@ enum AccountLocalState {
 
     @MainActor
     static func wipeSharedUserData() {
+        StreamingPreferences.clearAllPersistedSelections()
         UserDefaults.standard.removeObject(forKey: "taste_profile_v2")
         DiscoverViewModel.resetTrainingProgressForFullReset()
         WatchlistStore.shared.removeAll()

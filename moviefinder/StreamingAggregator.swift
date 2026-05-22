@@ -53,10 +53,18 @@ struct StreamingService: Identifiable {
 
 final class StreamingPreferences: ObservableObject {
     @Published var selectedServiceIds: Set<Int> = []
-    private let key = "selected_streaming_services_v2"
+
+    /// Guest / pre-auth bucket — not shared with signed-in users (avoids stale Netflix, etc. on first login).
+    static let guestStorageKey = "selected_streaming_services_v2"
+    private static let legacyStorageKey = "selected_streaming_services"
 
     init() {
         load()
+    }
+
+    static func storageKey(userId: String?) -> String {
+        if let userId { return "\(guestStorageKey)_\(userId)" }
+        return guestStorageKey
     }
 
     var selectedServices: [StreamingService] {
@@ -82,6 +90,11 @@ final class StreamingPreferences: ObservableObject {
         save()
     }
 
+    /// Reload from disk for the active account (call after sign-in / sign-out).
+    func reloadFromStorage() {
+        load()
+    }
+
     // Determines whether a movie should appear given the current filter.
     // Empty selection = no filter active = every movie passes (show all US titles).
     // Used by Watch Now's TMDB query (via providerIds) and by unit tests to verify behavior.
@@ -90,14 +103,25 @@ final class StreamingPreferences: ObservableObject {
     }
 
     private func save() {
-        UserDefaults.standard.set(Array(selectedServiceIds), forKey: key)
+        UserDefaults.standard.set(Array(selectedServiceIds), forKey: Self.storageKey(userId: AccountLocalState.lastSignedInUserId))
     }
 
     private func load() {
-        let saved = UserDefaults.standard.array(forKey: key) as? [Int] ?? []
-        // Strip stale IDs that no longer map to a known service.
+        let ud = UserDefaults.standard
+        let key = Self.storageKey(userId: AccountLocalState.lastSignedInUserId)
+        let saved = ud.array(forKey: key) as? [Int] ?? []
         let valid = Set(StreamingService.all.map(\.id))
         selectedServiceIds = Set(saved).intersection(valid)
+    }
+
+    /// Clears guest, legacy, and all per-user streaming filter keys (e.g. on account switch).
+    static func clearAllPersistedSelections() {
+        let ud = UserDefaults.standard
+        ud.removeObject(forKey: guestStorageKey)
+        ud.removeObject(forKey: legacyStorageKey)
+        for key in ud.dictionaryRepresentation().keys where key.hasPrefix("\(guestStorageKey)_") {
+            ud.removeObject(forKey: key)
+        }
     }
 }
 

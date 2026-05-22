@@ -4,15 +4,15 @@ import XCTest
 @MainActor
 final class StreamingServicesTests: XCTestCase {
 
-    private let key = "selected_streaming_services_v2"
+    private var key: String { StreamingPreferences.guestStorageKey }
 
     // Clear UserDefaults before and after every test to prevent state leakage.
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removeObject(forKey: key)
+        StreamingPreferences.clearAllPersistedSelections()
     }
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: key)
+        StreamingPreferences.clearAllPersistedSelections()
         super.tearDown()
     }
 

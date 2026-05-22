@@ -207,6 +207,7 @@ struct RootView: View {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .accountSessionDidChange)) { _ in
                     reloadAccountUIState()
+                    resetWatchNowFiltersForAccountSession()
                     if auth.isLoggedIn {
                         showAppIntro = !appIntroComplete
                     }
@@ -241,6 +242,7 @@ struct RootView: View {
             watchlist: WatchlistStore.shared
         )
         reloadAccountUIState()
+        resetWatchNowFiltersForAccountSession()
         await discoverVM.refresh()
         watchNowVM.scheduleGeneratePicks()
         if !appIntroComplete {
@@ -257,6 +259,14 @@ struct RootView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             showGenreOnboardingSheet = true
         }
+    }
+
+    /// Ensures Watch Now opens on All Streamers / Any Genre / Any Length after sign-in or account switch.
+    private func resetWatchNowFiltersForAccountSession() {
+        prefs.clearAll()
+        prefs.reloadFromStorage()
+        watchNowVM.resetFiltersToDefaults()
+        watchNowVM.resetShownMovieIdsForNewFilters()
     }
 }
 
