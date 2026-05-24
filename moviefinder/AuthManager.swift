@@ -63,6 +63,7 @@ final class AuthManager: ObservableObject {
 
     private let profileKey = "pickr_user_profile"
     private let loggedInKey = "pickr_is_logged_in"
+    private var authListenerTask: Task<Void, Never>?
 
     private init() {
         loadLocalCache()
@@ -96,6 +97,7 @@ final class AuthManager: ObservableObject {
     func restoreSessionIfNeeded() async {
         defer { isRestoringSession = false }
         guard SupabaseClientProvider.isConfigured, let client = SupabaseClientProvider.client else {
+            // Missing Supabase keys in this build — cannot restore or sign in.
             if isLoggedIn {
                 isLoggedIn = false
                 profile = nil
@@ -103,14 +105,90 @@ final class AuthManager: ObservableObject {
             }
             return
         }
+
+        startAuthStateListenerIfNeeded(client: client)
+
         do {
-            let session = try await client.auth.session
+            let session = try await resolveRestoredSession(client: client)
             try await applySupabaseSession(session, dataShareConsent: profile?.dataShareConsent ?? false)
         } catch {
-            isLoggedIn = false
-            profile = nil
-            saveLocalCache()
+            // Keep the cached login on transient failures (offline launch, refresh in flight).
+            // Only clear when the stored session is actually gone or revoked.
+            if shouldClearSessionAfterRestoreFailure(error, client: client) {
+                await clearLocalAuthState(signOutRemote: false)
+            } else if isLoggedIn, profile != nil {
+                saveLocalCache()
+            }
         }
+    }
+
+    /// Prefer the keychain session; refresh only when expired.
+    private func resolveRestoredSession(client: SupabaseClient) async throws -> Session {
+        if let cached = client.auth.currentSession {
+            if cached.isExpired {
+                return try await client.auth.refreshSession()
+            }
+            return cached
+        }
+        return try await client.auth.session
+    }
+
+    private func shouldClearSessionAfterRestoreFailure(_ error: Error, client: SupabaseClient) -> Bool {
+        if client.auth.currentSession != nil { return false }
+        if let authError = error as? Supabase.AuthError {
+            switch authError {
+            case .sessionMissing:
+                return true
+            case let .api(_, code, _, _):
+                switch code {
+                case .sessionNotFound, .sessionExpired, .refreshTokenNotFound,
+                     .refreshTokenAlreadyUsed, .userNotFound, .userBanned:
+                    return true
+                default:
+                    return false
+                }
+            default:
+                return false
+            }
+        }
+        return false
+    }
+
+    private func startAuthStateListenerIfNeeded(client: SupabaseClient) {
+        guard authListenerTask == nil else { return }
+        authListenerTask = Task { [weak self] in
+            for await (event, session) in client.auth.authStateChanges {
+                guard let self else { return }
+                await self.handleAuthStateChange(event: event, session: session)
+            }
+        }
+    }
+
+    private func handleAuthStateChange(event: AuthChangeEvent, session: Session?) async {
+        switch event {
+        case .signedOut:
+            await clearLocalAuthState(signOutRemote: false)
+        case .signedIn, .tokenRefreshed, .initialSession:
+            guard let session else { return }
+            try? await applySupabaseSession(session, dataShareConsent: profile?.dataShareConsent ?? false)
+        case .userUpdated, .userDeleted, .passwordRecovery, .mfaChallengeVerified:
+            break
+        }
+    }
+
+    private func clearLocalAuthState(signOutRemote: Bool) async {
+        if signOutRemote, let client = SupabaseClientProvider.client {
+            try? await client.auth.signOut()
+        }
+        SupabaseClientProvider.reset()
+        SupabaseSyncService.shared.cancelPendingPush()
+        AccountLocalState.clearOnSignOut()
+        authListenerTask?.cancel()
+        authListenerTask = nil
+        isLoggedIn = false
+        profile = nil
+        UserDefaults.standard.removeObject(forKey: profileKey)
+        UserDefaults.standard.set(false, forKey: loggedInKey)
     }
 
     // MARK: - Sign In with Apple
@@ -197,16 +275,7 @@ final class AuthManager: ObservableObject {
     // MARK: - Sign out
 
     func signOut() async {
-        if let client = SupabaseClientProvider.client {
-            try? await client.auth.signOut()
-        }
-        SupabaseClientProvider.reset()
-        SupabaseSyncService.shared.cancelPendingPush()
-        AccountLocalState.clearOnSignOut()
-        isLoggedIn = false
-        profile = nil
-        UserDefaults.standard.removeObject(forKey: profileKey)
-        UserDefaults.standard.set(false, forKey: loggedInKey)
+        await clearLocalAuthState(signOutRemote: true)
     }
 
     // MARK: - Supabase profile row

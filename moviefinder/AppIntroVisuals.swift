@@ -1,24 +1,51 @@
 // AppIntroVisuals.swift
-// Scaled in-app UI previews for the first-launch intro (TMDB posters + layout matched to real tabs).
-// Optional: add images to Assets (`IntroWelcome`, etc.) to override mocks.
+// Premium intro previews — dark UI, TMDB posters, minimal chrome.
 
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
 
+// MARK: - Design system
+
+enum IntroDesign {
+    static let canvas = Color(red: 0.07, green: 0.07, blue: 0.09)
+    static let mockBG = Color(red: 0.11, green: 0.11, blue: 0.13)
+    static let rowBG = Color(red: 0.15, green: 0.15, blue: 0.17)
+
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textBody = Color.white.opacity(0.70)
+
+    static let watchNowAccent = Color(red: 0.30, green: 0.76, blue: 0.64)
+    static let watchlistAccent = Color(red: 0.40, green: 0.58, blue: 0.98)
+    static let archivesAccent = Color(red: 0.70, green: 0.50, blue: 0.90)
+
+    static let pagePadding: CGFloat = 28
+    static let previewToCopy: CGFloat = 24
+    static let listSpacing: CGFloat = 13
+
+    static let previewWidth: CGFloat = 300
+    static let previewHeight: CGFloat = 336
+    static let cornerRadius: CGFloat = 24
+    static let inset: CGFloat = 16
+
+    enum Fonts {
+        static let kicker = Font.system(size: 11, weight: .semibold)
+        static let title = Font.system(size: 24, weight: .bold)
+        static let intro = Font.system(size: 15, weight: .regular)
+        static let body = Font.system(size: 15, weight: .regular)
+        static let listMarker = Font.system(size: 15, weight: .semibold)
+        static let button = Font.system(size: 17, weight: .semibold)
+    }
+}
+
 // MARK: - Visual kind
 
 enum AppIntroVisualKind: String {
-    case welcome
-    case curate
-    case watchNow
-    case watchlist
-    case archives
-    case ready
+    case welcome, curate, watchNow, watchlist, archives, ready
 }
 
-// MARK: - Sample movies (poster paths from pickr_library_v1.db / TMDB)
+// MARK: - Sample data
 
 struct IntroSampleMovie: Identifiable {
     let id: Int
@@ -53,24 +80,11 @@ enum IntroSampleCatalog {
         posterPath: "/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
         genreLabel: "Drama", rating: 8.9, runtime: "3h"
     )
-    static let poorThings = IntroSampleMovie(
-        id: 792307, title: "Poor Things", year: "2023",
-        posterPath: "/kCGlIMHnOm8JPXq3rXM6c5wMxcT.jpg",
-        genreLabel: "Fantasy", rating: 8.0, runtime: "2h 21m"
-    )
-    static let holdovers = IntroSampleMovie(
-        id: 840430, title: "The Holdovers", year: "2023",
-        posterPath: "/VHSzNBTwxV8vh7wylo7O9CLdac.jpg",
-        genreLabel: "Comedy", rating: 7.9, runtime: "2h 13m"
-    )
-
-    static let curateStack: [IntroSampleMovie] = [dune, pastLives, conjuring]
-    static let watchNowPicks: [IntroSampleMovie] = [conjuring, pastLives, dune]
-    static let watchlistGrid: [IntroSampleMovie] = [oppenheimer, pastLives, poorThings, holdovers]
-    static let archivesLiked: [IntroSampleMovie] = [oppenheimer, pastLives, dune]
+    static let curateStack = [dune, pastLives, conjuring]
+    static let watchNowPicks = [conjuring, pastLives, dune]
 }
 
-// MARK: - Poster image
+// MARK: - Poster
 
 struct IntroPosterView: View {
     let movie: IntroSampleMovie
@@ -80,581 +94,423 @@ struct IntroPosterView: View {
         Group {
             if let url = movie.posterURL {
                 AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
+                    if case .success(let image) = phase {
                         image.resizable().scaledToFill()
-                    default:
-                        introPosterPlaceholder
+                    } else {
+                        placeholder
                     }
                 }
             } else {
-                introPosterPlaceholder
+                placeholder
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
-    private var introPosterPlaceholder: some View {
+    private var placeholder: some View {
         Color.stablePlaceholderHue(for: movie.id, saturation: 0.45, brightness: 0.28)
     }
 }
 
-// MARK: - Uniform preview canvas (consistent size across intro pages)
+// MARK: - Device frame
 
-private enum AppIntroPreviewMetrics {
-    static let width: CGFloat = 286
-    static let height: CGFloat = 300
-    static let cornerRadius: CGFloat = 22
-    static let insetH: CGFloat = 14
-    static let insetV: CGFloat = 14
-    /// Poster image height for 2-across Watchlist / Archives rows.
-    static let posterRowHeight: CGFloat = 108
-    /// Title block under Archives posters (Watchlist uses spacer to match).
-    static let posterCaptionHeight: CGFloat = 32
-}
-
-/// Fixed-size background plate; content is centered inside.
-private struct AppIntroMockCanvas<Content: View>: View {
-    var background: Color
+struct IntroDeviceFrame<Content: View>: View {
+    var accent: Color = AppTheme.brand
     @ViewBuilder var content: () -> Content
 
-    init(
-        background: Color = Color(.systemGroupedBackground),
-        @ViewBuilder content: @escaping () -> Content
-    ) {
-        self.background = background
-        self.content = content
-    }
-
     var body: some View {
-        ZStack {
-            background
-            content()
-                .padding(.horizontal, AppIntroPreviewMetrics.insetH)
-                .padding(.vertical, AppIntroPreviewMetrics.insetV)
-        }
-        .frame(width: AppIntroPreviewMetrics.width, height: AppIntroPreviewMetrics.height)
-    }
-}
-
-// MARK: - Welcome hero (no card chrome — matches login / launch splash)
-
-struct AppIntroWelcomeHero: View {
-    var body: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.brand.opacity(0.12))
-                    .frame(width: 104, height: 104)
-                Image(systemName: "film.stack")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(AppTheme.brand)
+        content()
+            .frame(width: IntroDesign.previewWidth, height: IntroDesign.previewHeight)
+            .clipShape(RoundedRectangle(cornerRadius: IntroDesign.cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: IntroDesign.cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
             }
-            Text("Welcome to Pickr")
-                .font(AppTheme.titleLarge)
-                .tracking(-0.4)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Welcome to Pickr")
+            .shadow(color: .black.opacity(0.4), radius: 24, y: 14)
+            .shadow(color: accent.opacity(0.12), radius: 32, y: 8)
     }
 }
 
-// MARK: - Cropped UI frame (tab mocks — soft edge, no harsh stroke)
-
-struct AppIntroPhonePreview<Content: View>: View {
-    let content: Content
-
-    init(maxHeight: CGFloat = AppIntroPreviewMetrics.height, @ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .frame(
-                width: AppIntroPreviewMetrics.width,
-                height: AppIntroPreviewMetrics.height
-            )
-            .clipShape(
-                RoundedRectangle(cornerRadius: AppIntroPreviewMetrics.cornerRadius, style: .continuous)
-            )
-            .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 8)
-            .padding(.horizontal, 4)
-    }
-}
-
-// MARK: - Asset or mock
+// MARK: - Router
 
 struct AppIntroScreenVisual: View {
     let kind: AppIntroVisualKind
 
+    private var accent: Color {
+        switch kind {
+        case .welcome, .curate: AppTheme.brand
+        case .watchNow: IntroDesign.watchNowAccent
+        case .watchlist: IntroDesign.watchlistAccent
+        case .archives: IntroDesign.archivesAccent
+        case .ready: AppTheme.starGold
+        }
+    }
+
     var body: some View {
-        Group {
-            if let asset = kind.assetImageName, introAssetExists(asset) {
-                Image(asset)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                mock
+        IntroDeviceFrame(accent: accent) {
+            ZStack {
+                IntroDesign.mockBG
+                mock.padding(IntroDesign.inset)
             }
         }
     }
 
     @ViewBuilder
     private var mock: some View {
-        Group {
-            switch kind {
-            case .welcome:
-                AppIntroWelcomeHero()
-            case .curate:   AppIntroCurateMock()
-            case .watchNow: AppIntroWatchNowMock()
-            case .watchlist: AppIntroWatchlistMock()
-            case .archives: AppIntroArchivesMock()
-            case .ready:    AppIntroReadyMock()
-            }
+        switch kind {
+        case .welcome: IntroWelcomeMock()
+        case .curate: IntroCurateMock()
+        case .watchNow: IntroWatchNowMock()
+        case .watchlist: IntroWatchlistMock()
+        case .archives: IntroArchivesMock()
+        case .ready: IntroReadyMock()
         }
-        .frame(width: AppIntroPreviewMetrics.width, height: AppIntroPreviewMetrics.height)
     }
 }
 
-private func introAssetExists(_ name: String) -> Bool {
-    #if canImport(UIKit)
-    return UIImage(named: name) != nil
-    #else
-    return false
-    #endif
+// MARK: - Welcome hero (full page)
+
+struct AppIntroWelcomeHero: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.brand.opacity(0.10))
+                    .frame(width: 100, height: 100)
+                Image(systemName: "film.stack")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(AppTheme.brand)
+            }
+
+            VStack(spacing: 6) {
+                Text("Welcome to Pickr")
+                    .font(.system(size: 28, weight: .bold))
+                    .tracking(-0.4)
+                    .foregroundStyle(.white)
+                Text("Stream Smarter")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(IntroDesign.textSecondary)
+                    .tracking(0.25)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
 }
 
-private extension AppIntroVisualKind {
-    var assetImageName: String? {
-        switch self {
-        case .welcome:  return "IntroWelcome"
-        case .curate:   return "IntroCurate"
-        case .watchNow: return "IntroWatchNow"
-        case .watchlist: return "IntroWatchlist"
-        case .archives: return "IntroArchives"
-        case .ready:    return "IntroReady"
+private struct IntroWelcomeMock: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 0)
+            Image(systemName: "film.stack")
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(AppTheme.brand)
+            Text("Pickr")
+                .font(.system(size: 28, weight: .black))
+                .foregroundStyle(.white)
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 // MARK: - Curate
 
-private struct AppIntroCurateMock: View {
+private struct IntroCurateMock: View {
     private let stack = IntroSampleCatalog.curateStack
 
     var body: some View {
-        AppIntroMockCanvas {
-            VStack(spacing: 12) {
-                Spacer(minLength: 0)
-                ZStack {
-                    if stack.count > 1 {
-                        introSwipeCard(movie: stack[0], scale: 0.90, offset: CGSize(width: -8, height: 10), opacity: 0.5)
-                    }
-                    if stack.count > 2 {
-                        introSwipeCard(movie: stack[1], scale: 0.94, offset: CGSize(width: 6, height: 5), opacity: 0.72)
-                    }
-                    introSwipeCard(movie: stack[2], scale: 1, offset: .zero, opacity: 1, showLikeStamp: true)
+        VStack(spacing: 16) {
+            Spacer(minLength: 0)
+            ZStack {
+                if stack.count > 1 {
+                    card(stack[0], scale: 0.9, offset: CGSize(width: -12, height: 10), opacity: 0.4)
                 }
-                .frame(height: 176)
-
-                HStack(spacing: 12) {
-                    introActionCircle(icon: "hand.thumbsdown.fill", color: .red)
-                    introActionCircle(icon: "eye.slash", color: .orange)
-                    introActionCircle(icon: "bookmark.fill", color: .blue)
-                    introActionCircle(icon: "hand.thumbsup.fill", color: .green)
+                if stack.count > 2 {
+                    card(stack[1], scale: 0.95, offset: CGSize(width: 10, height: 5), opacity: 0.65)
                 }
-                Spacer(minLength: 0)
+                card(stack[2], showLike: true)
             }
+            .frame(height: 228)
+
+            HStack(spacing: 16) {
+                action("hand.thumbsdown.fill", .red)
+                action("eye.slash", .orange)
+                action("bookmark.fill", IntroDesign.watchlistAccent)
+                action("hand.thumbsup.fill", .green)
+            }
+            Spacer(minLength: 0)
         }
     }
 
-    private func introSwipeCard(
-        movie: IntroSampleMovie,
-        scale: CGFloat,
-        offset: CGSize,
-        opacity: Double,
-        showLikeStamp: Bool = false
+    private func card(
+        _ movie: IntroSampleMovie,
+        scale: CGFloat = 1,
+        offset: CGSize = .zero,
+        opacity: Double = 1,
+        showLike: Bool = false
     ) -> some View {
         ZStack(alignment: .bottomLeading) {
-            IntroPosterView(movie: movie, cornerRadius: 12)
-            LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)
-            if showLikeStamp {
+            IntroPosterView(movie: movie, cornerRadius: 16)
+            LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .center, endPoint: .bottom)
+            if showLike {
                 Text("LIKE")
-                    .font(.system(size: 16, weight: .black))
+                    .font(.system(size: 14, weight: .black))
                     .foregroundStyle(.green.opacity(0.88))
                     .rotationEffect(.degrees(-12))
-                    .padding(8)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(12)
             }
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(movie.title)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(movie.year)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.78))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
             }
-            .padding(8)
+            .padding(12)
         }
-        .frame(width: 114, height: 162)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.22), radius: 6, x: 0, y: 3)
+        .frame(width: 142, height: 204)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
         .scaleEffect(scale)
         .offset(offset)
         .opacity(opacity)
     }
 
-    private func introActionCircle(icon: String, color: Color) -> some View {
+    private func action(_ icon: String, _ color: Color) -> some View {
         Image(systemName: icon)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(color)
-            .frame(width: 32, height: 32)
+            .frame(width: 42, height: 42)
             .background(color.opacity(0.12))
             .clipShape(Circle())
-            .overlay(Circle().stroke(color.opacity(0.28), lineWidth: 1))
-            .frame(maxWidth: .infinity)
     }
 }
 
 // MARK: - Watch Now
 
-private struct AppIntroWatchNowMock: View {
+private struct IntroWatchNowMock: View {
     private let picks = IntroSampleCatalog.watchNowPicks
-    private let platforms = ["Max", "Netflix", "Max"]
-    private let platformColors: [Color] = [
-        Color(red: 0.00, green: 0.17, blue: 0.90),
-        Color(red: 0.90, green: 0.05, blue: 0.05),
-        Color(red: 0.00, green: 0.17, blue: 0.90),
-    ]
 
     var body: some View {
-        AppIntroMockCanvas {
-            VStack(alignment: .leading, spacing: 5) {
-                introChipRow {
-                    introChip("All Streamers", selected: true)
-                    introChip("Netflix", selected: false, icon: "play.rectangle.fill", tint: .red)
-                    introChip("Max", selected: false, icon: "bolt.fill", tint: Color(red: 0, green: 0.17, blue: 0.9))
-                }
-                introChipRow {
-                    introChip("Any Genre", selected: true)
-                    introChip("Horror", selected: false, tint: AppTheme.filterAccent)
-                    introChip("Sci-Fi", selected: false)
-                }
-                introChipRow {
-                    introChip("Any Length", selected: true)
-                    introChip("Under 90m", selected: false, icon: "clock")
-                    introChip("Under 2h", selected: false, icon: "clock")
-                }
-
-                VStack(spacing: 5) {
-                    ForEach(Array(picks.enumerated()), id: \.offset) { index, movie in
-                        introPickRow(
-                            movie: movie,
-                            rank: index + 1,
-                            platform: platforms[index],
-                            platformColor: platformColors[index]
-                        )
-                    }
-                }
+        VStack(alignment: .leading, spacing: 6) {
+            chipRow {
+                chip("All Streamers", on: true, fill: AppTheme.brand)
+                chip("Netflix", icon: "play.rectangle.fill")
+                chip("Max", icon: "bolt.fill")
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            chipRow {
+                chip("Any Genre", on: true, fill: AppTheme.filterAccent)
+                chip("Horror")
+                chip("Sci-Fi")
+            }
+            chipRow {
+                chip("Any Length", on: true, fill: AppTheme.brand)
+                chip("Under 2h", icon: "clock")
+            }
+
+            VStack(spacing: 5) {
+                row(picks[0], 1, "Max", Color(red: 0, green: 0.17, blue: 0.9))
+                row(picks[1], 2, "Netflix", Color(red: 0.9, green: 0.05, blue: 0.05))
+                row(picks[2], 3, "Max", Color(red: 0, green: 0.17, blue: 0.9))
+            }
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func chipRow(@ViewBuilder content: () -> some View) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) { content() }
         }
     }
 
-    private func introChipRow(@ViewBuilder chips: () -> some View) -> some View {
-        HStack(spacing: 5) { chips() }
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func introChip(_ text: String, selected: Bool, icon: String? = nil, tint: Color = AppTheme.filterAccent) -> some View {
+    private func chip(_ title: String, on: Bool = false, icon: String? = nil, fill: Color = AppTheme.brand) -> some View {
         HStack(spacing: 3) {
             if let icon {
-                Image(systemName: icon)
-                    .font(.system(size: 7, weight: .semibold))
+                Image(systemName: icon).font(.system(size: 8, weight: .semibold))
             }
-            Text(text)
-                .font(.system(size: 8, weight: .semibold))
-                .lineLimit(1)
+            Text(title).font(.system(size: 9, weight: .semibold)).lineLimit(1)
         }
-        .foregroundStyle(selected ? .white : .primary.opacity(0.75))
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(selected ? tint : Color.primary.opacity(0.07))
+        .foregroundStyle(on ? .white : .white.opacity(0.5))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(on ? fill : Color.white.opacity(0.07))
         .clipShape(Capsule())
     }
 
-    private func introPickRow(movie: IntroSampleMovie, rank: Int, platform: String, platformColor: Color) -> some View {
+    private func row(_ movie: IntroSampleMovie, _ rank: Int, _ platform: String, _ platformColor: Color) -> some View {
         HStack(spacing: 0) {
             IntroPosterView(movie: movie, cornerRadius: 6)
-                .frame(width: 32, height: 48)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
+                .frame(width: 34, height: 52)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
                     Text(movie.title)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer(minLength: 2)
                     Text("\(rank)")
-                        .font(.system(size: 12, weight: .heavy))
-                        .foregroundStyle(Color(white: 0.32))
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundStyle(.white.opacity(0.2))
                 }
-                .padding(.bottom, 3)
-
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 7))
-                    Text(movie.runtime)
-                        .font(.system(size: 7, weight: .medium))
+                HStack(spacing: 3) {
+                    Text(movie.runtime).font(.system(size: 8))
                     Text(platform)
                         .font(.system(size: 7, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(platformColor.opacity(0.55))
+                        .background(platformColor.opacity(0.6))
                         .clipShape(Capsule())
                 }
-                .foregroundStyle(Color(white: 0.62))
-                .padding(.bottom, 4)
-
-                HStack(spacing: 5) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 7))
-                        .foregroundStyle(.yellow)
-                    Text(String(format: "%.1f", movie.rating))
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
-                    Text(movie.genreLabel)
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(Color(white: 0.62))
-                    Spacer(minLength: 2)
-                    HStack(spacing: 3) {
-                        introMiniFeedback("hand.thumbsup.fill", .green)
-                        introMiniFeedback("hand.thumbsdown.fill", .red)
-                        introMiniFeedback("bookmark.fill", .blue)
-                    }
+                .foregroundStyle(.white.opacity(0.5))
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill").font(.system(size: 7)).foregroundStyle(AppTheme.starGold)
+                    Text(String(format: "%.1f", movie.rating)).font(.system(size: 8, weight: .semibold))
+                    Text(movie.genreLabel).font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 }
+                .foregroundStyle(.white.opacity(0.85))
             }
-            .padding(.leading, 7)
-            .padding(.trailing, 7)
+            .padding(.horizontal, 8)
             .padding(.vertical, 7)
         }
         .frame(height: 54)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color(red: 0.12, green: 0.12, blue: 0.14))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
-    }
-
-    private func introMiniFeedback(_ icon: String, _ color: Color) -> some View {
-        Image(systemName: icon)
-            .font(.system(size: 6, weight: .semibold))
-            .foregroundStyle(color)
-            .frame(width: 14, height: 14)
-            .background(color.opacity(0.12))
-            .clipShape(Circle())
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(IntroDesign.rowBG))
     }
 }
 
 // MARK: - Watchlist
 
-private struct AppIntroWatchlistMock: View {
+private struct IntroWatchlistMock: View {
     private let movies = [IntroSampleCatalog.oppenheimer, IntroSampleCatalog.pastLives]
 
     var body: some View {
-        AppIntroMockCanvas {
-            VStack {
-                Spacer(minLength: 0)
-                IntroTwoPosterRow(movies: movies, style: .watchlist)
-                Spacer(minLength: 0)
+        VStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 14) {
+                ForEach(movies) { movie in
+                    ZStack(alignment: .topTrailing) {
+                        IntroPosterView(movie: movie, cornerRadius: 14)
+                            .frame(height: 152)
+                            .frame(maxWidth: .infinity)
+                            .clipped()
+                        Image(systemName: "bookmark.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(IntroDesign.watchlistAccent)
+                            .padding(8)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+                }
             }
+            Spacer(minLength: 0)
         }
     }
 }
 
 // MARK: - Archives
 
-private struct AppIntroArchivesMock: View {
-    private let likedPosters = [IntroSampleCatalog.oppenheimer, IntroSampleCatalog.pastLives]
+private struct IntroArchivesMock: View {
+    private let movies = [IntroSampleCatalog.oppenheimer, IntroSampleCatalog.pastLives]
 
     var body: some View {
-        AppIntroMockCanvas {
-            VStack(alignment: .leading, spacing: 10) {
-                Spacer(minLength: 0)
-                introArchivesSegmentPicker
-                introArchivesSearchBar
-                IntroTwoPosterRow(movies: likedPosters, style: .archives)
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 0) {
+                seg("Liked", "hand.thumbsup.fill", true)
+                seg("Disliked", "hand.thumbsdown.fill", false)
+            }
+            .padding(3)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.35))
+                Text("Search liked films")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.3))
                 Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(movies) { movie in
+                    VStack(alignment: .leading, spacing: 5) {
+                        ZStack(alignment: .topTrailing) {
+                            IntroPosterView(movie: movie, cornerRadius: 12)
+                                .frame(height: 118)
+                                .frame(maxWidth: .infinity)
+                            ratingBadge(movie.rating)
+                                .padding(5)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        Text(movie.title)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(2)
+                        Text(movie.year)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.4))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            Spacer(minLength: 0)
         }
     }
 
-    private var introArchivesSegmentPicker: some View {
-        HStack(spacing: 0) {
-            introArchivesSegment(
-                title: "Liked",
-                icon: "hand.thumbsup.fill",
-                count: 3,
-                selected: true
-            )
-            introArchivesSegment(
-                title: "Disliked",
-                icon: "hand.thumbsdown.fill",
-                count: 0,
-                selected: false
-            )
-        }
-        .padding(3)
-        .background(Color(.tertiarySystemFill).opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-    }
-
-    private func introArchivesSegment(title: String, icon: String, count: Int, selected: Bool) -> some View {
+    private func seg(_ title: String, _ icon: String, _ on: Bool) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 9, weight: .semibold))
-            Text(title)
-                .font(.system(size: 9, weight: .semibold))
-            Text("\(count)")
-                .font(.system(size: 8, weight: .bold))
-                .monospacedDigit()
-                .opacity(0.6)
+            Image(systemName: icon).font(.system(size: 9, weight: .semibold))
+            Text(title).font(.system(size: 9, weight: .semibold))
         }
-        .foregroundStyle(selected ? Color.primary : Color.secondary)
+        .foregroundStyle(on ? .white : .white.opacity(0.4))
         .frame(maxWidth: .infinity)
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(selected ? Color(.secondarySystemGroupedBackground) : Color.clear)
-                .shadow(color: .black.opacity(selected ? 0.06 : 0), radius: 2, x: 0, y: 1)
+                .fill(on ? IntroDesign.archivesAccent.opacity(0.32) : .clear)
         )
     }
 
-    private var introArchivesSearchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text("Search liked films")
-                .font(.system(size: 10, weight: .regular))
-                .foregroundStyle(.tertiary)
-            Spacer(minLength: 0)
+    private func ratingBadge(_ rating: Double) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "star.fill").font(.system(size: 7)).foregroundStyle(AppTheme.starGold)
+            Text(String(format: "%.1f", rating)).font(.system(size: 7, weight: .bold)).foregroundStyle(.white)
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-    }
-}
-
-// MARK: - Shared two-poster row (Watchlist + Archives)
-
-private enum IntroTwoPosterRowStyle {
-    case watchlist
-    case archives
-}
-
-private struct IntroTwoPosterRow: View {
-    let movies: [IntroSampleMovie]
-    let style: IntroTwoPosterRowStyle
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ForEach(movies) { movie in
-                IntroPosterTile(movie: movie, style: style)
-            }
-        }
-    }
-}
-
-private struct IntroPosterTile: View {
-    let movie: IntroSampleMovie
-    let style: IntroTwoPosterRowStyle
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .topTrailing) {
-                IntroPosterView(movie: movie, cornerRadius: 12)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: AppIntroPreviewMetrics.posterRowHeight)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                switch style {
-                case .watchlist:
-                    Image(systemName: "bookmark.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.blue)
-                        .padding(6)
-                case .archives:
-                    HStack(spacing: 2) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 7))
-                            .foregroundStyle(.yellow)
-                        Text(String(format: "%.1f", movie.rating))
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 3)
-                    .background(Color.black.opacity(0.55))
-                    .clipShape(Capsule())
-                    .padding(5)
-                }
-            }
-            Group {
-                if style == .archives {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(movie.title)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(movie.year)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Color.clear
-                }
-            }
-            .frame(height: AppIntroPreviewMetrics.posterCaptionHeight, alignment: .top)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .shadow(color: .black.opacity(style == .watchlist ? 0.12 : 0.08), radius: 4, x: 0, y: 2)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(.black.opacity(0.5))
+        .clipShape(Capsule())
     }
 }
 
 // MARK: - Ready
 
-private struct AppIntroReadyMock: View {
+private struct IntroReadyMock: View {
     var body: some View {
-        AppIntroMockCanvas(background: Color(.systemGroupedBackground)) {
-            VStack(spacing: 14) {
-                Spacer(minLength: 0)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 44))
+        VStack {
+            Spacer(minLength: 0)
+            ZStack {
+                Circle()
+                    .stroke(AppTheme.starGold.opacity(0.2), lineWidth: 1)
+                    .frame(width: 100, height: 100)
+                Circle()
+                    .fill(AppTheme.starGold.opacity(0.12))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(AppTheme.starGold)
-                Text("You’re ready")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
             }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

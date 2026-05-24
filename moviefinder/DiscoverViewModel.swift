@@ -465,7 +465,7 @@ final class DiscoverViewModel: ObservableObject {
             #endif
             t = "Won't recommend this genre"
         case .watchlist:   t = "Added to Watchlist"
-        case .didNotSee:   t = "Haven’t watched"
+        case .didNotSee:   t = "Skip"
         case .none:        return
         }
         lastFeedback = SwipeFeedback(direction: dir, title: t)
@@ -881,7 +881,7 @@ struct DiscoverView: View {
         if t.width  >  threshold { return .like }
         if t.width  < -threshold { return .skip }
         if t.height < -threshold { return .watchlist }
-        if t.height >  threshold { return .didNotSee }  // swipe down = skip (haven't watched)
+        if t.height >  threshold { return .didNotSee }  // swipe down = skip (unseen)
         return .none
     }
 
@@ -1346,7 +1346,11 @@ final class WatchlistStore: ObservableObject {
     func replaceAll(ids newIds: Set<Int>, suppressSyncPush: Bool = false) {
         if suppressSyncPush {
             suppressSyncPushCount += 1
-            defer { suppressSyncPushCount -= 1 }
+        }
+        defer {
+            if suppressSyncPush {
+                suppressSyncPushCount -= 1
+            }
         }
         ids = newIds
         persist()

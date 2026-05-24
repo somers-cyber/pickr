@@ -1,6 +1,5 @@
 // AppIntroTourView.swift
-// First-launch walkthrough: in-app UI previews + practical copy for each tab.
-// Per-tab coaches (Curate swipe guide, Watch Now info) still run on those screens.
+// First-launch walkthrough — clean, premium, matches login / launch.
 
 import SwiftUI
 
@@ -28,16 +27,19 @@ struct AppIntroTourView: View {
     var onComplete: () -> Void
 
     @State private var page = 0
-
     private let pages = AppIntroPage.all
 
     var body: some View {
         ZStack {
-            AppIntroTourStyle.background
-                .ignoresSafeArea()
+            IntroDesign.canvas.ignoresSafeArea()
 
-            AppIntroTourStyle.topGlow
-                .ignoresSafeArea()
+            RadialGradient(
+                colors: [AppTheme.brand.opacity(0.12), Color.clear],
+                center: .top,
+                startRadius: 20,
+                endRadius: 300
+            )
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 headerBar
@@ -48,11 +50,10 @@ struct AppIntroTourView: View {
                             .tag(index)
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .always))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(.easeInOut(duration: 0.28), value: page)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.easeInOut(duration: 0.3), value: page)
 
-                footerCTA
+                footerChrome
             }
         }
     }
@@ -61,15 +62,14 @@ struct AppIntroTourView: View {
         HStack {
             if page > 0 {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.28)) { page -= 1 }
+                    withAnimation(.easeInOut(duration: 0.3)) { page -= 1 }
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.45))
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Previous")
             } else {
                 Color.clear.frame(width: 44, height: 44)
             }
@@ -77,38 +77,53 @@ struct AppIntroTourView: View {
             Spacer()
 
             if page == 0 {
-                Button("Skip") { finish() }
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.40))
+                Button("Skip", action: finish)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.35))
                     .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
-    private var footerCTA: some View {
-        VStack(spacing: 14) {
+    private var footerChrome: some View {
+        VStack(spacing: 20) {
+            HStack(spacing: 6) {
+                ForEach(0..<pages.count, id: \.self) { index in
+                    Capsule()
+                        .fill(index == page ? Color.white : Color.white.opacity(0.2))
+                        .frame(width: index == page ? 20 : 5, height: 5)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: page)
+            .accessibilityLabel("Page \(page + 1) of \(pages.count)")
+
             Button(action: advance) {
                 Text(page == pages.count - 1 ? "Get Started" : "Next")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.black)
+                    .font(IntroDesign.Fonts.button)
+                    .foregroundStyle(page == pages.count - 1 ? .white : .black)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.vertical, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(page == pages.count - 1 ? AppTheme.brand : .white)
+                    )
+                    .shadow(
+                        color: (page == pages.count - 1 ? AppTheme.brand : .black).opacity(0.25),
+                        radius: 12,
+                        y: 5
+                    )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(page == pages.count - 1 ? "Get Started" : "Next page")
         }
-        .padding(.horizontal, 32)
-        .padding(.bottom, 44)
-        .padding(.top, 4)
+        .padding(.horizontal, IntroDesign.pagePadding)
+        .padding(.bottom, 24)
     }
 
     private func advance() {
         if page < pages.count - 1 {
-            withAnimation(.easeInOut(duration: 0.28)) { page += 1 }
+            withAnimation(.easeInOut(duration: 0.3)) { page += 1 }
         } else {
             finish()
         }
@@ -119,64 +134,59 @@ struct AppIntroTourView: View {
     }
 }
 
-// MARK: - Page model
+// MARK: - Page data
 
 private enum AppIntroListStyle {
     case bullet
     case numbered
 }
 
-/// How the top of an intro page is presented.
-private enum AppIntroPreviewPresentation {
-    /// Logo + title on the tour background (Welcome).
-    case brandHero
-    /// Rounded UI mock in a soft shadow frame (tab walkthrough).
-    case framedMock
-}
-
 private struct AppIntroPage: Identifiable {
     let id: String
+    let kicker: String
     let visual: AppIntroVisualKind
     let title: String
     let accent: Color
-    var presentation: AppIntroPreviewPresentation = .framedMock
-    /// Optional lead paragraph (no bullet), shown above `lines`.
-    var introLine: String? = nil
+    var isWelcome = false
+    var introLines: [String] = []
     var listStyle: AppIntroListStyle = .bullet
-    /// When false, title is shown only in the preview (e.g. Welcome).
-    var showsTitleBelowPreview: Bool = true
     let lines: [String]
 
     static let all: [AppIntroPage] = [
         AppIntroPage(
             id: "welcome",
+            kicker: "",
             visual: .welcome,
             title: "Welcome to Pickr",
             accent: AppTheme.brand,
-            presentation: .brandHero,
-            introLine: "Learn your taste. Three picks, fast.",
-            showsTitleBelowPreview: false,
+            isWelcome: true,
+            introLines: ["Learn your taste. Three picks, fast."],
             lines: []
         ),
         AppIntroPage(
             id: "curate",
+            kicker: "SWIPE & TRAIN",
             visual: .curate,
             title: "Curate",
             accent: AppTheme.brand,
-            introLine: "Curate is where you teach Pickr your taste.",
+            introLines: ["Curate is where you teach Pickr your taste."],
             lines: [
                 "Like — more like this.",
                 "Dislike — less like this.",
                 "Watchlist — save for later.",
-                "Did Not See — doesn't change your taste."
+                "Skip — doesn't change your taste."
             ]
         ),
         AppIntroPage(
             id: "watchnow",
+            kicker: "TONIGHT'S PICKS",
             visual: .watchNow,
             title: "Watch Now",
-            accent: Color(red: 0.35, green: 0.55, blue: 0.95),
-            introLine: "Three picks, fast — filter by streamer, genre, and runtime.",
+            accent: IntroDesign.watchNowAccent,
+            introLines: [
+                "Three picks, fast.",
+                "Filter by streamer, genre, and runtime."
+            ],
             lines: [
                 "Review or add to Watchlist",
                 "Tap the movie poster for more details",
@@ -185,10 +195,11 @@ private struct AppIntroPage: Identifiable {
         ),
         AppIntroPage(
             id: "watchlist",
+            kicker: "SAVE FOR LATER",
             visual: .watchlist,
             title: "Watchlist",
-            accent: .blue,
-            introLine: "Movies you saved for later.",
+            accent: IntroDesign.watchlistAccent,
+            introLines: ["Movies you saved for later."],
             lines: [
                 "Save from Curate or any movie card.",
                 "Like or Dislike after you watch — it goes to Archives.",
@@ -197,10 +208,11 @@ private struct AppIntroPage: Identifiable {
         ),
         AppIntroPage(
             id: "archives",
+            kicker: "YOUR HISTORY",
             visual: .archives,
             title: "Archives",
-            accent: Color(white: 0.72),
-            introLine: "Your liked and disliked movies.",
+            accent: IntroDesign.archivesAccent,
+            introLines: ["Your liked and disliked movies."],
             lines: [
                 "Liked and Disliked tabs at the top.",
                 "Tap a poster for details.",
@@ -209,8 +221,9 @@ private struct AppIntroPage: Identifiable {
         ),
         AppIntroPage(
             id: "ready",
+            kicker: "FINAL STEPS",
             visual: .ready,
-            title: "You’re ready",
+            title: "You're ready",
             accent: AppTheme.starGold,
             listStyle: .numbered,
             lines: [
@@ -223,172 +236,123 @@ private struct AppIntroPage: Identifiable {
     ]
 }
 
-// MARK: - Page view
-
-private enum AppIntroPageLayout {
-    /// Space above the TabView page indicator dots (inside the scroll content).
-    static let pageIndicatorInset: CGFloat = 52
-}
-
-private enum AppIntroCopyStyle {
-    static let body = Font.system(size: 15, weight: .regular)
-    static let bodyColor = Color.white.opacity(0.72)
-    static let sectionTitle = Font.system(size: 24, weight: .bold)
-    static let heroTagline = Font.system(size: 16, weight: .regular)
-    static let heroTaglineColor = Color.white.opacity(0.72)
-}
+// MARK: - Page
 
 private struct AppIntroPageView: View {
     let page: AppIntroPage
-    @State private var appeared = false
-
-    /// Slightly shrink preview on copy-heavy pages so text fits above the page dots.
-    private var previewScale: CGFloat {
-        let copyLines = page.lines.count + (page.introLine != nil ? 1 : 0)
-        if copyLines >= 5 { return 0.86 }
-        if copyLines >= 4 { return 0.90 }
-        return 1
-    }
 
     var body: some View {
-        Group {
-            switch page.presentation {
-            case .brandHero:
-                brandHeroLayout
-            case .framedMock:
-                framedMockLayout
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 0) {
+                if page.isWelcome {
+                    welcomeContent
+                } else {
+                    tabContent
+                }
             }
+            .padding(.horizontal, IntroDesign.pagePadding)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            appeared = false
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.84).delay(0.04)) {
-                appeared = true
-            }
-        }
-        .onDisappear { appeared = false }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    // MARK: Welcome — logo and title on background, no card frame
+    // MARK: Welcome
 
-    private var brandHeroLayout: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 16)
+    private var welcomeContent: some View {
+        VStack(spacing: 32) {
+            Spacer(minLength: 20)
 
             AppIntroWelcomeHero()
-                .scaleEffect(appeared ? 1 : 0.96)
-                .opacity(appeared ? 1 : 0)
 
-            if let intro = page.introLine {
-                Text(intro)
-                    .font(AppIntroCopyStyle.heroTagline)
-                    .foregroundStyle(AppIntroCopyStyle.heroTaglineColor)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(5)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 36)
-                    .padding(.top, 28)
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 8)
-            }
+            Text(page.introLines.first ?? "")
+                .font(IntroDesign.Fonts.intro)
+                .foregroundStyle(IntroDesign.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(6)
+                .padding(.horizontal, 16)
 
-            Spacer(minLength: AppIntroPageLayout.pageIndicatorInset)
-        }
-        .padding(.horizontal, 8)
-    }
-
-    // MARK: Tab mocks + copy
-
-    private var framedMockLayout: some View {
-        VStack(spacing: 0) {
-            AppIntroPhonePreview {
-                AppIntroScreenVisual(kind: page.visual)
-            }
-            .scaleEffect(appeared ? previewScale : previewScale * 0.96)
-            .opacity(appeared ? 1 : 0)
-            .padding(.top, 4)
-
-            ScrollView(.vertical, showsIndicators: false) {
-                copyBlock
-                    .padding(.bottom, AppIntroPageLayout.pageIndicatorInset)
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 6)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Spacer(minLength: 20)
         }
     }
 
-    @ViewBuilder
-    private var copyBlock: some View {
-        VStack(spacing: 0) {
-            if page.showsTitleBelowPreview {
-                Text(page.title)
-                    .font(AppIntroCopyStyle.sectionTitle)
-                    .tracking(-0.3)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
-                    .padding(.top, 8)
+    // MARK: Tab pages
+
+    private var tabContent: some View {
+        VStack(spacing: IntroDesign.previewToCopy) {
+            AppIntroScreenVisual(kind: page.visual)
+                .frame(maxWidth: .infinity)
+
+            copyContent
+        }
+    }
+
+    private var copyContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !page.kicker.isEmpty {
+                Text(page.kicker)
+                    .font(IntroDesign.Fonts.kicker)
+                    .tracking(1.2)
+                    .foregroundStyle(page.accent)
             }
 
-            VStack(alignment: page.lines.isEmpty ? .center : .leading, spacing: 0) {
-                if let intro = page.introLine {
-                    Text(intro)
-                        .font(AppIntroCopyStyle.body)
-                        .foregroundStyle(AppIntroCopyStyle.bodyColor)
-                        .multilineTextAlignment(page.lines.isEmpty ? .center : .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineSpacing(4)
-                        .padding(.bottom, page.lines.isEmpty ? 0 : 12)
+            Text(page.title)
+                .font(IntroDesign.Fonts.title)
+                .tracking(-0.4)
+                .foregroundStyle(.white)
+                .padding(.top, page.kicker.isEmpty ? 0 : 8)
+
+            Capsule()
+                .fill(page.accent.opacity(0.85))
+                .frame(width: 28, height: 2)
+                .padding(.top, 10)
+                .padding(.bottom, 16)
+
+            if !page.introLines.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(page.introLines, id: \.self) { line in
+                        Text(line)
+                            .font(IntroDesign.Fonts.intro)
+                            .foregroundStyle(IntroDesign.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .padding(.bottom, page.lines.isEmpty ? 0 : 20)
+            }
 
-                if !page.lines.isEmpty {
-                    VStack(alignment: .leading, spacing: 9) {
-                        ForEach(Array(page.lines.enumerated()), id: \.offset) { index, line in
-                            HStack(alignment: .top, spacing: 10) {
-                                switch page.listStyle {
-                                case .bullet:
-                                    Circle()
-                                        .fill(page.accent.opacity(0.9))
-                                        .frame(width: 6, height: 6)
-                                        .padding(.top, 7)
-                                case .numbered:
-                                    Text("\(index + 1).")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundStyle(page.accent.opacity(0.95))
-                                        .frame(width: 22, alignment: .trailing)
-                                        .padding(.top, 1)
-                                }
-                                Text(line)
-                                    .font(AppIntroCopyStyle.body)
-                                    .foregroundStyle(AppIntroCopyStyle.bodyColor)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .lineSpacing(2)
-                            }
-                        }
+            if !page.lines.isEmpty {
+                VStack(alignment: .leading, spacing: IntroDesign.listSpacing) {
+                    ForEach(Array(page.lines.enumerated()), id: \.offset) { index, line in
+                        listRow(index: index, text: line)
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: page.lines.isEmpty ? .center : .leading)
-            .padding(.horizontal, 32)
-            .padding(.top, page.showsTitleBelowPreview ? 10 : 14)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
-}
 
-// MARK: - Chrome
+    private func listRow(index: Int, text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            switch page.listStyle {
+            case .bullet:
+                Circle()
+                    .fill(page.accent)
+                    .frame(width: 5, height: 5)
+                    .padding(.top, 7)
+            case .numbered:
+                Text("\(index + 1).")
+                    .font(IntroDesign.Fonts.listMarker)
+                    .foregroundStyle(page.accent)
+                    .frame(width: 20, alignment: .leading)
+            }
 
-private enum AppIntroTourStyle {
-    /// Matches launch splash / login dark canvas.
-    static let background = Color(red: 0.07, green: 0.07, blue: 0.09)
-
-    static var topGlow: some View {
-        RadialGradient(
-            colors: [AppTheme.brand.opacity(0.15), Color.clear],
-            center: .top,
-            startRadius: 40,
-            endRadius: 280
-        )
+            Text(text)
+                .font(IntroDesign.Fonts.body)
+                .foregroundStyle(IntroDesign.textBody)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

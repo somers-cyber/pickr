@@ -75,7 +75,7 @@ struct MovieCard: View {
         isTopCard ? Double(max(0, min(1, -dragOffset.width / 80))) : 0
     }
     private var didNotSeeOpacity: Double {
-        // Down swipe = skip (haven't watched)
+        // Down swipe = skip (unseen titles)
         isTopCard ? Double(max(0, min(1, dragOffset.height / 80))) : 0
     }
     private var watchlistOpacity: Double {
@@ -162,14 +162,14 @@ struct MovieCard: View {
                 .padding(24 * sizeScale)
                 .opacity(skipOpacity)
 
-            // SKIP (down swipe — haven't watched)
+            // SKIP (down swipe — unseen titles)
             Label("SKIP", systemImage: "eye.slash.fill")
                 .font(.system(size: 22 * sizeScale, weight: .black))
                 .foregroundColor(.orange)
                 .padding(10 * sizeScale)
                 .overlay(RoundedRectangle(cornerRadius: 8 * sizeScale).stroke(Color.orange, lineWidth: 3))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, 24 * sizeScale)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.top, 24 * sizeScale)
                 .opacity(didNotSeeOpacity)
 
             // WATCHLIST
