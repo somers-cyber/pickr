@@ -233,6 +233,35 @@ final class EvaluationsStore: ObservableObject {
         UserDefaults.standard.removeObject(forKey: migratedKey)
     }
 
+    func reloadFromStorage() {
+        load()
+        bumpGeneration()
+    }
+
+    /// Fills Archives gaps from synced taste profile swipe history (Archives is local-only).
+    func syncFromTasteProfile(_ profile: TasteProfile) {
+        var merged: [Int: Evaluation] = Dictionary(uniqueKeysWithValues: all.map { ($0.tmdbId, $0) })
+
+        for entry in profile.swipeHistory {
+            let verdict: Evaluation.Verdict = entry.mult >= 0 ? .liked : .disliked
+            if merged[entry.movieId] == nil {
+                merged[entry.movieId] = Evaluation(
+                    tmdbId: entry.movieId,
+                    verdict: verdict,
+                    timestamp: entry.timestamp
+                )
+            }
+        }
+
+        for id in profile.likedIds where merged[id] == nil {
+            merged[id] = Evaluation(tmdbId: id, verdict: .liked, timestamp: Date.distantPast)
+        }
+
+        all = merged.values.sorted { $0.timestamp < $1.timestamp }
+        bumpGeneration()
+        persist()
+    }
+
     // MARK: - Persistence
 
     private func load() {

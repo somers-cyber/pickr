@@ -48,6 +48,8 @@ struct RootView: View {
     @State private var didScheduleLaunchSplashEnd = false
     /// Prevents duplicate Supabase pull/push on login + session restore.
     @State private var hasCompletedPostAuthSync = false
+    @State private var isAccountDataSyncing = false
+    @State private var postAuthSyncInFlight = false
 
     init() {
         let ud = UserDefaults.standard
@@ -95,16 +97,14 @@ struct RootView: View {
                 LoginView()
 
             } else {
-                // ── Fully authenticated → main app ───────────────────────
+                // ── Fully authenticated → main app (tabs always mounted; overlays on top) ──
                 ZStack {
-                    if appIntroComplete {
-                        MainTabView()
-                            .environmentObject(engine)
-                            .environmentObject(prefs)
-                            .environmentObject(discoverVM)
-                            .environmentObject(watchNowVM)
-                            .transition(.opacity)
-                    }
+                    MainTabView()
+                        .environmentObject(engine)
+                        .environmentObject(prefs)
+                        .environmentObject(discoverVM)
+                        .environmentObject(watchNowVM)
+                        .opacity(showLaunchSplash || showAppIntro ? 0 : 1)
 
                     if showLaunchSplash {
                         PickrLaunchSplashView()
@@ -125,6 +125,13 @@ struct RootView: View {
                         }
                         .transition(.opacity)
                         .zIndex(1)
+                    }
+
+                    if isAccountDataSyncing {
+                        Color.black.opacity(0.35).ignoresSafeArea().zIndex(3)
+                        ProgressView()
+                            .tint(.white)
+                            .zIndex(4)
                     }
                 }
                 .background(Color(red: 0.07, green: 0.07, blue: 0.09))
@@ -168,15 +175,14 @@ struct RootView: View {
                 .onAppear {
                     guard !didScheduleLaunchSplashEnd else { return }
                     didScheduleLaunchSplashEnd = true
+                    if !appIntroComplete {
+                        showAppIntro = true
+                    }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
                         withAnimation(.easeOut(duration: 0.4)) {
                             showLaunchSplash = false
                         }
-                        if !appIntroComplete {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                                showAppIntro = true
-                            }
-                        } else {
+                        if appIntroComplete {
                             presentGenreOnboardingIfNeeded()
                         }
                     }
@@ -189,6 +195,12 @@ struct RootView: View {
                         schedulePostAuthSetupIfNeeded()
                     } else {
                         hasCompletedPostAuthSync = false
+                        isAccountDataSyncing = false
+                        postAuthSyncInFlight = false
+                        showAppIntro = false
+                        // Re-arm the splash so it covers the LoginView → MainTabView transition on next login.
+                        showLaunchSplash = true
+                        didScheduleLaunchSplashEnd = false
                     }
                 }
                 .onChange(of: auth.isRestoringSession) { _, restoring in
@@ -202,6 +214,7 @@ struct RootView: View {
                 .onChange(of: scenePhase) { _, phase in
                     guard auth.isLoggedIn, !auth.isRestoringSession else { return }
                     if phase == .background {
+                        AccountLocalState.persistSharedUserDataToScoped()
                         Task { await SupabaseSyncService.shared.flushPendingPush() }
                     }
                 }
@@ -219,8 +232,9 @@ struct RootView: View {
     }
 
     private func schedulePostAuthSetupIfNeeded() {
-        guard auth.isLoggedIn, !auth.isRestoringSession, !hasCompletedPostAuthSync else { return }
-        hasCompletedPostAuthSync = true
+        guard auth.isLoggedIn, !auth.isRestoringSession,
+              !hasCompletedPostAuthSync, !postAuthSyncInFlight else { return }
+        postAuthSyncInFlight = true
         reloadAccountUIState()
         Task { await finishAccountSignIn() }
     }
@@ -233,10 +247,17 @@ struct RootView: View {
         genreOnboardingComplete = AccountLocalState.globalBool("genre_onboarding_complete")
         onboardingComplete = AccountLocalState.globalBool("onboarding_complete")
         engine.profile = ProfileStorage.shared.load()
+        EvaluationsStore.shared.syncFromTasteProfile(engine.profile)
         discoverVM.syncTrainingStateAfterProfileReload()
     }
 
     private func finishAccountSignIn() async {
+        isAccountDataSyncing = true
+        defer {
+            isAccountDataSyncing = false
+            hasCompletedPostAuthSync = true
+            postAuthSyncInFlight = false
+        }
         await SupabaseSyncService.shared.syncAfterLogin(
             engine: engine,
             watchlist: WatchlistStore.shared
@@ -246,9 +267,7 @@ struct RootView: View {
         await discoverVM.refresh()
         watchNowVM.scheduleGeneratePicks()
         if !appIntroComplete {
-            withAnimation(.easeOut(duration: 0.35)) {
-                showAppIntro = true
-            }
+            showAppIntro = true
         } else {
             presentGenreOnboardingIfNeeded()
         }

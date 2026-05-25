@@ -288,11 +288,27 @@ final class AuthManager: ObservableObject {
         let user = session.user
         let uid = user.id.uuidString
         AccountLocalState.activateUser(uid)
+
+        // Restart the auth-state listener if it was torn down during sign-out.
+        if let client = SupabaseClientProvider.client {
+            startAuthStateListenerIfNeeded(client: client)
+        }
+
         var p = profile ?? UserProfile(id: uid)
         p.id = uid
         p.email = user.email ?? p.email
         if let displayName, !displayName.isEmpty {
             p.displayName = displayName
+        } else if (p.displayName ?? "").isEmpty {
+            // Local cache was cleared on sign-out: recover display name without overwriting it with nil.
+            // 1. Apple stores the full name in user metadata after the first sign-in.
+            if let meta = user.userMetadata["full_name"],
+               case .string(let name) = meta, !name.isEmpty {
+                p.displayName = name
+            } else if let client = SupabaseClientProvider.client {
+                // 2. Email accounts have the name only in the remote profiles row.
+                p.displayName = await fetchRemoteDisplayName(userId: user.id, client: client)
+            }
         }
         let device = DeviceMetadata.current()
         p.country = device.country
@@ -305,6 +321,19 @@ final class AuthManager: ObservableObject {
         isLoggedIn = true
         saveLocalCache()
         try await upsertRemoteProfile(p)
+    }
+
+    private func fetchRemoteDisplayName(userId: UUID, client: SupabaseClient) async -> String? {
+        struct Row: Decodable { let display_name: String? }
+        let rows: [Row] = (try? await client
+            .from("profiles")
+            .select("display_name")
+            .eq("id", value: userId.uuidString)
+            .limit(1)
+            .execute()
+            .value) ?? []
+        guard let name = rows.first?.display_name, !name.isEmpty else { return nil }
+        return name
     }
 
     private func upsertRemoteProfile(_ p: UserProfile) async throws {

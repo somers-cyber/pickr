@@ -1335,8 +1335,20 @@ final class WatchlistStore: ObservableObject {
 
     func allIds() -> Set<Int> { ids }
 
+    func reloadFromStorage() {
+        ids = Set(UserDefaults.standard.array(forKey: key) as? [Int] ?? [])
+    }
+
     /// Clears all saved IDs (e.g. full app reset). Posts `watchlistStoreDidReset` so UI can reload.
-    func removeAll() {
+    func removeAll(suppressSyncPush: Bool = false) {
+        if suppressSyncPush {
+            suppressSyncPushCount += 1
+        }
+        defer {
+            if suppressSyncPush {
+                suppressSyncPushCount -= 1
+            }
+        }
         ids = []
         persist()
         NotificationCenter.default.post(name: .watchlistStoreDidReset, object: nil)

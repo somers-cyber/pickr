@@ -33,6 +33,11 @@ final class SupabaseSyncService {
         debounceTask = nil
     }
 
+    private struct PullResult {
+        var tasteSucceeded = false
+        var watchlistSucceeded = false
+    }
+
     /// Call after a successful login or session restore.
     func syncAfterLogin(engine: RecommendationEngine, watchlist: WatchlistStore) async {
         register(engine: engine)
@@ -40,8 +45,22 @@ final class SupabaseSyncService {
         isApplyingRemotePull = true
         defer { isApplyingRemotePull = false }
         guard SupabaseClientProvider.isConfigured, AuthManager.shared.isLoggedIn else { return }
-        await pullRemote(into: engine, watchlist: watchlist)
-        await pushLocal(engine: engine, watchlist: watchlist)
+
+        let localTasteBeforePull = hasMeaningfulTaste(engine.profile)
+        let localWatchlistBeforePull = !watchlist.allIds().isEmpty
+
+        let pull = await pullRemote(into: engine, watchlist: watchlist)
+
+        EvaluationsStore.shared.syncFromTasteProfile(engine.profile)
+        AccountLocalState.persistSharedUserDataToScoped()
+
+        await pushAfterLoginPull(
+            engine: engine,
+            watchlist: watchlist,
+            pull: pull,
+            hadLocalTaste: localTasteBeforePull,
+            hadLocalWatchlist: localWatchlistBeforePull
+        )
     }
 
     /// Debounced upload after local taste or watchlist changes.
@@ -64,6 +83,7 @@ final class SupabaseSyncService {
         debounceTask?.cancel()
         debounceTask = nil
         await performPush()
+        AccountLocalState.persistSharedUserDataToScoped()
     }
 
     func pushLocal(engine: RecommendationEngine, watchlist: WatchlistStore) async {
@@ -74,14 +94,17 @@ final class SupabaseSyncService {
 
     // MARK: - Pull
 
-    private func pullRemote(into engine: RecommendationEngine, watchlist: WatchlistStore) async {
-        await pullTasteProfile(into: engine)
-        await pullWatchlist(into: watchlist)
+    private func pullRemote(into engine: RecommendationEngine, watchlist: WatchlistStore) async -> PullResult {
+        var result = PullResult()
+        result.tasteSucceeded = await pullTasteProfile(into: engine)
+        result.watchlistSucceeded = await pullWatchlist(into: watchlist)
+        return result
     }
 
-    private func pullTasteProfile(into engine: RecommendationEngine) async {
+    @discardableResult
+    private func pullTasteProfile(into engine: RecommendationEngine) async -> Bool {
         guard let client = SupabaseClientProvider.client,
-              let userId = AuthManager.shared.supabaseUserId else { return }
+              let userId = AuthManager.shared.supabaseUserId else { return false }
         do {
             let rows: [TasteProfileRemoteRow] = try await client
                 .from("taste_profiles")
@@ -94,20 +117,25 @@ final class SupabaseSyncService {
                let data = row.data.data(using: .utf8),
                let remote = try? JSONDecoder().decode(TasteProfile.self, from: data),
                !row.data.isEmpty, row.data != "{}" {
-                engine.profile = remote
-                ProfileStorage.shared.save(remote)
+                let local = engine.profile
+                if shouldPreferRemoteTaste(remote, over: local) {
+                    engine.profile = remote
+                    ProfileStorage.shared.save(remote)
+                }
             }
-            // No remote row / empty payload: keep local profile; push will upload it.
+            return true
         } catch {
             #if DEBUG
             print("[SupabaseSync] pull taste_profiles failed: \(error)")
             #endif
+            return false
         }
     }
 
-    private func pullWatchlist(into watchlist: WatchlistStore) async {
+    @discardableResult
+    private func pullWatchlist(into watchlist: WatchlistStore) async -> Bool {
         guard let client = SupabaseClientProvider.client,
-              let userId = AuthManager.shared.supabaseUserId else { return }
+              let userId = AuthManager.shared.supabaseUserId else { return false }
         do {
             let rows: [WatchlistRemoteRow] = try await client
                 .from("watchlist")
@@ -115,17 +143,52 @@ final class SupabaseSyncService {
                 .eq("user_id", value: userId.uuidString)
                 .execute()
                 .value
-            // Empty remote: keep local bookmarks so first sync does not wipe the device list.
-            guard !rows.isEmpty else { return }
-            watchlist.replaceAll(ids: Set(rows.map(\.tmdb_id)), suppressSyncPush: true)
+            guard !rows.isEmpty else { return true }
+            let remoteIds = Set(rows.map(\.tmdb_id))
+            let localIds = watchlist.allIds()
+            if remoteIds.count >= localIds.count || localIds.isEmpty {
+                watchlist.replaceAll(ids: remoteIds, suppressSyncPush: true)
+            }
+            return true
         } catch {
             #if DEBUG
             print("[SupabaseSync] pull watchlist failed: \(error)")
             #endif
+            return false
         }
     }
 
+    private func shouldPreferRemoteTaste(_ remote: TasteProfile, over local: TasteProfile) -> Bool {
+        if !hasMeaningfulTaste(local) { return true }
+        if !hasMeaningfulTaste(remote) { return false }
+        return remote.totalSwipes >= local.totalSwipes
+            || remote.swipeHistory.count >= local.swipeHistory.count
+    }
+
+    private func hasMeaningfulTaste(_ profile: TasteProfile) -> Bool {
+        profile.totalSwipes > 0 || !profile.swipeHistory.isEmpty || !profile.likedIds.isEmpty
+    }
+
     // MARK: - Push
+
+    private func pushAfterLoginPull(
+        engine: RecommendationEngine,
+        watchlist: WatchlistStore,
+        pull: PullResult,
+        hadLocalTaste: Bool,
+        hadLocalWatchlist: Bool
+    ) async {
+        let canPushTaste = pull.tasteSucceeded || hadLocalTaste || hasMeaningfulTaste(engine.profile)
+        if canPushTaste {
+            await pushTasteProfile(engine: engine)
+        }
+
+        let watchlistIds = watchlist.allIds()
+        let canPushWatchlist = pull.watchlistSucceeded || hadLocalWatchlist || !watchlistIds.isEmpty
+        if canPushWatchlist {
+            await pushWatchlist(watchlist: watchlist)
+        }
+    }
 
     private func performPush() async {
         guard let engine else { return }
@@ -133,6 +196,7 @@ final class SupabaseSyncService {
     }
 
     private func pushTasteProfile(engine: RecommendationEngine) async {
+        guard hasMeaningfulTaste(engine.profile) else { return }
         guard let client = SupabaseClientProvider.client,
               let userId = AuthManager.shared.supabaseUserId else { return }
         do {
@@ -150,15 +214,14 @@ final class SupabaseSyncService {
     private func pushWatchlist(watchlist: WatchlistStore) async {
         guard let client = SupabaseClientProvider.client,
               let userId = AuthManager.shared.supabaseUserId else { return }
+        let ids = watchlist.allIds()
+        guard !ids.isEmpty else { return }
         do {
             try await client
                 .from("watchlist")
                 .delete()
                 .eq("user_id", value: userId.uuidString)
                 .execute()
-
-            let ids = watchlist.allIds()
-            guard !ids.isEmpty else { return }
 
             let rows = ids.map { WatchlistInsertRow(user_id: userId, tmdb_id: $0) }
             try await client.from("watchlist").insert(rows).execute()

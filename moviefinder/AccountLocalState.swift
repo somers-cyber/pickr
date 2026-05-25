@@ -12,6 +12,11 @@ enum AccountLocalState {
 
     private static let lastUserIdKey = "pickr_last_signed_in_user_id"
 
+    /// Shared taste / watchlist / archives keys (global mirror while signed in).
+    private static let tasteProfileKey = "taste_profile_v2"
+    private static let watchlistKey = "watchlist_tmdb_ids_v2"
+    private static let evaluationsKey = "evaluations_store_v2"
+
     /// UserDefaults keys mirrored to globals (`@AppStorage` / legacy reads) per active user.
     private static let onboardingFlagBases = [
         "genre_onboarding_complete",
@@ -30,16 +35,28 @@ enum AccountLocalState {
     /// Call when a Supabase session becomes active (new sign-in or restore).
     static func activateUser(_ userId: String) {
         let previous = UserDefaults.standard.string(forKey: lastUserIdKey)
-        if previous != userId {
+        let switchedAccount = previous != nil && previous != userId
+        if switchedAccount, let previous {
+            persistSharedUserDataToScoped(userId: previous)
             wipeSharedUserData()
-            UserDefaults.standard.set(userId, forKey: lastUserIdKey)
+        }
+        UserDefaults.standard.set(userId, forKey: lastUserIdKey)
+        // After sign-out or account switch globals are empty — restore this user's cached slot.
+        let restoredFromCache = switchedAccount || sharedUserDataIsEmpty()
+        if restoredFromCache {
+            loadScopedUserDataIntoGlobals(userId: userId)
         }
         mirrorOnboardingFlagsToGlobals(for: userId)
-        postSessionDidChange()
+        if switchedAccount || restoredFromCache {
+            postSessionDidChange()
+        }
     }
 
-    /// Call on sign-out — clears taste/history; keeps last user id so the next login can detect a switch.
+    /// Call on sign-out — snapshots taste/history for this account, clears globals; keeps last user id for re-login.
     static func clearOnSignOut() {
+        if let userId = lastSignedInUserId {
+            persistSharedUserDataToScoped(userId: userId)
+        }
         wipeSharedUserData()
         mirrorOnboardingFlagsToGlobalsForLoggedOut()
         postSessionDidChange()
@@ -105,14 +122,43 @@ enum AccountLocalState {
         ud.removeObject(forKey: trainingValidSwipeCountBase)
     }
 
+    // MARK: - Per-user local cache (taste / watchlist / archives)
+
+    /// Saves the active global taste data into the signed-in user's scoped slot.
+    static func persistSharedUserDataToScoped(userId: String? = lastSignedInUserId) {
+        guard let userId else { return }
+        let ud = UserDefaults.standard
+        for base in [tasteProfileKey, watchlistKey, evaluationsKey] {
+            if let value = ud.object(forKey: base) {
+                ud.set(value, forKey: scopedKey(base, userId: userId))
+            }
+        }
+    }
+
+    /// Restores a user's last on-device taste data into the global keys stores read at runtime.
+    @MainActor
+    static func loadScopedUserDataIntoGlobals(userId: String) {
+        let ud = UserDefaults.standard
+        for base in [tasteProfileKey, watchlistKey, evaluationsKey] {
+            let scoped = scopedKey(base, userId: userId)
+            if let value = ud.object(forKey: scoped) {
+                ud.set(value, forKey: base)
+            } else {
+                ud.removeObject(forKey: base)
+            }
+        }
+        WatchlistStore.shared.reloadFromStorage()
+        EvaluationsStore.shared.reloadFromStorage()
+    }
+
     // MARK: - Wipe local taste / history (not auth)
 
     @MainActor
     static func wipeSharedUserData() {
         StreamingPreferences.clearAllPersistedSelections()
-        UserDefaults.standard.removeObject(forKey: "taste_profile_v2")
+        UserDefaults.standard.removeObject(forKey: tasteProfileKey)
         DiscoverViewModel.resetTrainingProgressForFullReset()
-        WatchlistStore.shared.removeAll()
+        WatchlistStore.shared.removeAll(suppressSyncPush: true)
         EvaluationsStore.shared.clearAll()
         MovieDetailFeedbackStore.shared.clearAll()
         MovieDetailEngineRecordStore.shared.clearAll()
@@ -123,6 +169,14 @@ enum AccountLocalState {
 
     private static func scopedKey(_ base: String, userId: String) -> String {
         "\(base)_\(userId)"
+    }
+
+    private static func sharedUserDataIsEmpty() -> Bool {
+        let ud = UserDefaults.standard
+        let hasTaste = ud.data(forKey: tasteProfileKey) != nil
+        let watchlistIds = ud.array(forKey: watchlistKey) as? [Int] ?? []
+        let hasEvaluations = ud.data(forKey: evaluationsKey) != nil
+        return !hasTaste && watchlistIds.isEmpty && !hasEvaluations
     }
 
     private static func postSessionDidChange() {
