@@ -167,7 +167,10 @@ struct LoginView: View {
                 }
             }
             .signInWithAppleButtonStyle(.white)
-            .frame(height: 52)
+            // ASAuthorizationAppleIDButton has an internal `width <= 375` constraint.
+            // Capping here prevents an unsatisfiable-constraints warning when the
+            // SwiftUI host frame rounds up to 376 pt on some device/safe-area combos.
+            .frame(maxWidth: 375, minHeight: 52, maxHeight: 52)
             .clipShape(RoundedRectangle(cornerRadius: 13))
             .padding(.horizontal, 32)
             .opacity(canSignIn ? 1 : 0.45)
