@@ -198,7 +198,6 @@ final class AuthManager: ObservableObject {
         if signOutRemote, let client = SupabaseClientProvider.client {
             try? await client.auth.signOut()
         }
-        SupabaseClientProvider.reset()
         AccountLocalState.clearOnSignOut()
         authListenerTask?.cancel()
         authListenerTask = nil
