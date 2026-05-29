@@ -67,6 +67,12 @@ final class AuthManager: ObservableObject {
     /// Prevents the `.initialSession` auth-listener callback from spawning a second
     /// concurrent execution of `applySupabaseSession` while the first is still running.
     private var isApplyingSession = false
+    /// Prevents the auth-listener's `.signedOut` callback from re-entering
+    /// `clearLocalAuthState` while a manual sign-out flush is already running.
+    /// Without this guard, `client.auth.signOut()` fires `.signedOut`, the listener
+    /// calls `clearLocalAuthState` re-entrantly, reaches `authListenerTask?.cancel()`,
+    /// and self-cancels the task that owns the in-flight Supabase push → NSURLErrorCancelled -999.
+    private var isClearingLocalState = false
 
     private init() {
         loadLocalCache()
@@ -191,6 +197,17 @@ final class AuthManager: ObservableObject {
         // Auth listener `.signedOut` can fire after we already cleared local state — skip the second pass
         // so we don't re-persist empty globals over the user's scoped snapshot.
         guard isLoggedIn || profile != nil else { return }
+        // `client.auth.signOut()` (below) fires `.signedOut` on the auth-state listener, which
+        // would re-enter this function, self-cancel the auth-listener task's in-flight push, and
+        // produce NSURLErrorCancelled (-999).  Drop any re-entrant call.
+        guard !isClearingLocalState else { return }
+        isClearingLocalState = true
+        defer { isClearingLocalState = false }
+
+        // Eagerly persist the current swipe/watchlist state to the user's scoped slot
+        // BEFORE any async work.  This guarantees the scoped cache is valid even if the
+        // Supabase flush below encounters a network error.
+        AccountLocalState.persistAllStateToScoped()
 
         // Flush any pending swipe data before revoking the session so the
         // push is authenticated. flushPendingPush also cancels the debounce task.
