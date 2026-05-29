@@ -61,9 +61,12 @@ final class AuthManager: ObservableObject {
     @Published private(set) var isRestoringSession = true
     @Published var lastErrorMessage: String?
 
-    private let profileKey = "pickr_user_profile"
-    private let loggedInKey = "pickr_is_logged_in"
+    private let profileKey = UserDefaultsKeys.userProfile
+    private let loggedInKey = UserDefaultsKeys.isLoggedIn
     private var authListenerTask: Task<Void, Never>?
+    /// Prevents the `.initialSession` auth-listener callback from spawning a second
+    /// concurrent execution of `applySupabaseSession` while the first is still running.
+    private var isApplyingSession = false
 
     private init() {
         loadLocalCache()
@@ -71,6 +74,14 @@ final class AuthManager: ObservableObject {
     }
 
     var supabaseUserId: UUID? {
+        resolvedSupabaseUserId
+    }
+
+    /// Prefer the live Supabase session user id over cached profile metadata.
+    var resolvedSupabaseUserId: UUID? {
+        if let sessionId = SupabaseClientProvider.client?.auth.currentSession?.user.id {
+            return sessionId
+        }
         guard let id = profile?.id else { return nil }
         return UUID(uuidString: id)
     }
@@ -177,11 +188,17 @@ final class AuthManager: ObservableObject {
     }
 
     private func clearLocalAuthState(signOutRemote: Bool) async {
+        // Auth listener `.signedOut` can fire after we already cleared local state — skip the second pass
+        // so we don't re-persist empty globals over the user's scoped snapshot.
+        guard isLoggedIn || profile != nil else { return }
+
+        // Flush any pending swipe data before revoking the session so the
+        // push is authenticated. flushPendingPush also cancels the debounce task.
+        await SupabaseSyncService.shared.flushPendingPush()
         if signOutRemote, let client = SupabaseClientProvider.client {
             try? await client.auth.signOut()
         }
         SupabaseClientProvider.reset()
-        SupabaseSyncService.shared.cancelPendingPush()
         AccountLocalState.clearOnSignOut()
         authListenerTask?.cancel()
         authListenerTask = nil
@@ -285,8 +302,22 @@ final class AuthManager: ObservableObject {
         dataShareConsent: Bool,
         displayName: String? = nil
     ) async throws {
+        // The auth-state listener (emitLocalSessionAsInitialSession: true) fires an
+        // .initialSession event at our first await, which would re-enter this function
+        // concurrently and overwrite profile/consent with stale values.  The flag
+        // serialises calls so only the first one runs; subsequent ones are dropped.
+        guard !isApplyingSession else { return }
+        isApplyingSession = true
+        defer { isApplyingSession = false }
+
         let user = session.user
         let uid = user.id.uuidString
+
+        // Assign profile id before activateUser so session handlers can mirror per-user state.
+        var p = profile ?? UserProfile(id: uid)
+        p.id = uid
+        profile = p
+
         AccountLocalState.activateUser(uid)
 
         // Restart the auth-state listener if it was torn down during sign-out.
@@ -294,8 +325,6 @@ final class AuthManager: ObservableObject {
             startAuthStateListenerIfNeeded(client: client)
         }
 
-        var p = profile ?? UserProfile(id: uid)
-        p.id = uid
         p.email = user.email ?? p.email
         if let displayName, !displayName.isEmpty {
             p.displayName = displayName
@@ -373,6 +402,27 @@ private struct SupabaseProfileRow: Encodable {
     let data_share_consent: Bool
     let consent_date: Date?
     let profile_complete: Bool
+
+    // Custom encode so nil Optionals are *omitted* from the JSON body rather than
+    // sent as explicit `null`.  Supabase upsert only updates columns present in the
+    // payload, so omitting a key leaves the existing DB value untouched — preventing
+    // a re-login from overwriting display_name / email / etc. with NULL.
+    private enum CodingKeys: String, CodingKey {
+        case id, email, display_name, country
+        case marketing_consent, data_share_consent, consent_date, profile_complete
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id,                  forKey: .id)
+        try c.encodeIfPresent(email,       forKey: .email)
+        try c.encodeIfPresent(display_name, forKey: .display_name)
+        try c.encodeIfPresent(country,     forKey: .country)
+        try c.encode(marketing_consent,    forKey: .marketing_consent)
+        try c.encode(data_share_consent,   forKey: .data_share_consent)
+        try c.encodeIfPresent(consent_date, forKey: .consent_date)
+        try c.encode(profile_complete,     forKey: .profile_complete)
+    }
 }
 
 // MARK: - Errors
