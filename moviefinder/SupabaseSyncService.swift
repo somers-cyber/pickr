@@ -54,7 +54,15 @@ final class SupabaseSyncService {
         }
         debounceTask = nil
         isApplyingRemotePull = true
-        defer { isApplyingRemotePull = false }
+        defer {
+            isApplyingRemotePull = false
+            // Fire any push that was deferred while the pull was in flight
+            // (e.g. swipes made during the login sync window).
+            if hasPendingFollowUpPush {
+                hasPendingFollowUpPush = false
+                schedulePushFromLocalChange()
+            }
+        }
         guard SupabaseClientProvider.isConfigured, AuthManager.shared.isLoggedIn else { return }
         guard activeUserId() != nil else { return }
 
@@ -87,7 +95,13 @@ final class SupabaseSyncService {
 
     /// Debounced upload after local taste or watchlist changes.
     func schedulePushFromLocalChange() {
-        if isApplyingRemotePull { return }
+        if isApplyingRemotePull {
+            // A pull is in progress — queue a follow-up push for when it finishes
+            // rather than silently dropping the request (which would lose swipes made
+            // during the login sync window).
+            hasPendingFollowUpPush = true
+            return
+        }
         if !SupabaseClientProvider.isConfigured { return }
         if !AuthManager.shared.isLoggedIn { return }
         if engine == nil {
