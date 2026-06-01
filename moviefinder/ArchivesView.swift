@@ -235,7 +235,13 @@ struct ArchivesView: View {
                     if vm.isLoading {
                         loadingState
                     } else if vm.likedMovies.isEmpty && vm.dislikedMovies.isEmpty {
-                        emptyState
+                        // Evaluations exist but metadata fetch is pending (e.g. restored from sync
+                        // without CachedMovieMeta) — show spinner rather than empty state.
+                        if evaluations.all.isEmpty {
+                            emptyState
+                        } else {
+                            loadingState
+                        }
                     } else {
                         archivesContent
                     }

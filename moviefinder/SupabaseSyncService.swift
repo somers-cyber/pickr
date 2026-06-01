@@ -210,6 +210,9 @@ final class SupabaseSyncService {
             let localIds = watchlist.allIds()
             if localIds.isEmpty || remoteIds.count >= localIds.count {
                 watchlist.replaceAll(ids: remoteIds, suppressSyncPush: true)
+                // Notify WatchlistView to reload. Its `.task` already ran (before sync)
+                // with an empty store, so it needs an explicit kick after the pull fills it.
+                NotificationCenter.default.post(name: .watchlistStoreDidReset, object: nil)
             }
             return true
         } catch {
